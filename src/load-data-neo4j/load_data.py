@@ -25,7 +25,9 @@ file_destination = os.path.join(os.path.dirname(__file__), 'dataloaded')
 schema_initialized = False
 
 def schemaNeo4j():
-    """Función para inicializar el esquema principal de Neo4j"""
+    """Function to initialize Neo4j main schema 
+    before processing the pdf files"""
+    
     global schema_initialized
 
     if schema_initialized:
@@ -52,7 +54,7 @@ def schemaNeo4j():
 def processpdfNeo4j(doc, doc_location):
     """Function to process pdf files to the Neo4j Aura database. 
     The function expects a json opened with the LayoutPDFReader 
-    library or similar to preprocess in the doc variable and the pdf opened in pdf_file"""
+    library to preprocess in the doc variable and the pdf opened in pdf_file"""
 
     cypher_pool = [
     #Document: Create Document node with 'url_hash' and 'doc_name' from document loaded

@@ -3,6 +3,11 @@ class BaseLogger:
         self.info = print
 
 def extract_title_and_question(input_string):
+    """Function that extracts the title and the question 
+    from the answer of the model of the generate ticket function
+    The function expects an input in str with two lines separated by 
+    a line break to decompose the input by title and question"""
+    
     lines = input_string.strip().split("\n")
 
     title = ""

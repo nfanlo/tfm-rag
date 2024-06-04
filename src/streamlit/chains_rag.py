@@ -22,14 +22,18 @@ embed_model_id = 'sentence-transformers/all-MiniLM-L6-v2'
 
 device = f'cuda:{cuda.current_device()}' if cuda.is_available() else 'cpu'
 
-
 def load_embedding(logger=BaseLogger()):
+    """Function that loads the selected embedding for later use in RAG mode"""
+
     embeddings = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
     dimension = 384
     logger.info("Embedding: Using SentenceTransformer")
     return embeddings, dimension
 
 def load_llm(llm_name, logger=BaseLogger()):
+    """Function that loads the selected model in the streamlit application. 
+    The function waits for the input of the model name in str between gpt-3.5 or gpt-4"""
+    
     if llm_name == 'gpt-4':
         logger.info('LLM: GPT-4')
         return ChatOpenAI(temperature=0.2, model_name='gpt-4', streaming=True, openai_api_key=OPENAI_PASSWORD)
@@ -42,6 +46,10 @@ def load_llm(llm_name, logger=BaseLogger()):
         return ChatOpenAI(temperature=0.2, model_name='gpt-3.5-turbo', streaming=True, openai_api_key=OPENAI_PASSWORD)
 
 def llm_chain(llm):
+    """Function that generates a response from the llm model when RAG mode is disabled. 
+    The function waits for the selected llm model. This function will process the user input 
+    and generate the complete response flow with the llm model."""
+
     test_neo4j(NEO4J_URL, NEO4J_USER, NEO4J_PASSWORD, show_nodes=False) #Change True: Show number of nodes in Neo4j DB
     template = """
     You are a GPT lawyer, the best specialist in contracts and Spanish laws that helps with answering general questions.
@@ -59,6 +67,11 @@ def llm_chain(llm):
     return llm_output
 
 def qa_rag_chain(llm, embeddings, embeddings_url, username, password, database, doc_name):
+    """Function that generates a response from the RAG system when the mode is activated. 
+    The function expects the llm model, the embedding model, the contract name and the instance 
+    variables from the Neo4j database. 
+    The function will search the database for the chunks of text most similar to the user input 
+    and generate the complete response flow with the llm model"""
 
     test_neo4j(NEO4J_URL, NEO4J_USER, NEO4J_PASSWORD, show_nodes=False)
     print("DOCUMENT NAME:", doc_name)
@@ -127,6 +140,10 @@ def qa_rag_chain(llm, embeddings, embeddings_url, username, password, database, 
     return graph_response_qa
 
 def llm_ticket(user_input, llm):
+    """Function that generates a report ticket from a user's input when the caller has not responded correctly. 
+    The function waits for the user to enter the chat when they have pressed the generate ticket button and the llm model selected. 
+    This function will generate a new title and more extensive question about the entry that the user has entered for subsequent analysis by the support team."""
+
     gen_system_template = """
     You're an expert in formulating high quality questions in Spanish text. 
     Can you formulate a question in the same style, detail and tone as the following example questions?
@@ -153,7 +170,6 @@ def llm_ticket(user_input, llm):
         HumanMessagePromptTemplate.from_template("{text}")])
     
     llm_output = llm_chain(llm)
-    
     llm_response = llm_output(f"Here's the question to rewrite in the expected format: ```{user_input}```", [], chat_prompt)
     
     return llm_response

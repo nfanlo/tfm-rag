@@ -31,23 +31,16 @@ llm_chain = llm_chain(llm)
 rag_chain = None
 
 def initialize_rag_chain(contract_name):
+    """Function that initializes the rag_chain when the 
+    RAG mode button is activated"""
+
     global rag_chain
     rag_chain = qa_rag_chain(llm, embeddings, doc_name=contract_name, embeddings_url=NEO4J_URL, username=NEO4J_USER, password=NEO4J_PASSWORD, database=NEO4J_DATABASE)
 
-class StreamHandler(BaseCallbackHandler):
-    def __init__(self, container, initial_text=""):
-        self.container = container
-        self.text = initial_text
-    def on_llm_new_token(self, token: str, **kwargs) -> None:
-        self.text += token
-        self.container.markdown(self.text)
-
-col1, col2 = st.columns([3, 1])
-
-with col1:
-    st.image("images/grupo_asv_logo.jpeg", width=150)
-
 def update_rag_reports(user_input, assistant_llm_chain, assistant_rag_chain, contract_name, username):
+    """Function to update the rag reports in the corresponding 
+    csv for subsequent support analysis"""
+
     csv_path = "dashboard-data/rag-reports.csv"
     if not os.path.exists("dashboard-data"):
         os.makedirs("dashboard-data")
@@ -70,6 +63,19 @@ def update_rag_reports(user_input, assistant_llm_chain, assistant_rag_chain, con
 
     df_rag_reports = pd.concat([df_rag_reports, pd.DataFrame([new_row])], ignore_index=True)
     df_rag_reports.to_csv(csv_path, index=False)
+
+class StreamHandler(BaseCallbackHandler):
+    def __init__(self, container, initial_text=""):
+        self.container = container
+        self.text = initial_text
+    def on_llm_new_token(self, token: str, **kwargs) -> None:
+        self.text += token
+        self.container.markdown(self.text)
+
+col1, col2 = st.columns([3, 1])
+
+with col1:
+    st.image("images/grupo_asv_logo.jpeg", width=150)
 
 def chat_input(name):
     user_input = st.chat_input("¿En qué puedo ayudarte hoy?")
