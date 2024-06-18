@@ -9,7 +9,7 @@ NEO4J_DATABASE = "neo4j"
 NEO4J_PASSWORD = config["neo4j_password"]
 NEO4J_URL = config["neo4j_url"]
 
-def test_neo4j(uri, user, password, show_nodes=False):
+def testnodes_neo4j(uri, user, password, show_nodes=False):
     try:
         driver = GraphDatabase.driver(uri, auth=(user, password))
         with driver.session() as session:

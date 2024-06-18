@@ -18,22 +18,26 @@ NEO4J_URL = config["neo4j_url"]
 
 llmsherpa_api_url = "https://readers.llmsherpa.com/api/document/developer/parseDocument?renderFormat=all"
 
-#Path to select the new files to preprocess in the newdata folder and assign them to the dataloaded folders
 file_location = os.path.join(os.path.dirname(__file__), 'newdata')
 file_destination = os.path.join(os.path.dirname(__file__), 'dataloaded')
 
-schema_initialized = False
+def test_neo4j(uri, user, password):
+    try:
+        driver = GraphDatabase.driver(uri, auth=(user, password))
+        with driver.session() as session:
+            result = session.run("MATCH (n) RETURN count(n) AS count")
+            node_count = result.single()["count"]
+            return node_count > 0
+    except Exception as e:
+        print(f"Connection failed: {e}")
+        return False
+    finally:
+        driver.close()
 
 def schemaNeo4j():
     """Function to initialize Neo4j main schema 
     before processing the pdf files"""
-    
-    global schema_initialized
 
-    if schema_initialized:
-        print("Schema already initialized, skipping.")
-        return
-#
     cypher_schema = [
         "CREATE CONSTRAINT sectionKey IF NOT EXISTS FOR (c:Section) REQUIRE (c.key) IS UNIQUE;",
         "CREATE CONSTRAINT chunkKey IF NOT EXISTS FOR (c:Chunk) REQUIRE (c.key) IS UNIQUE;",
@@ -43,12 +47,8 @@ def schemaNeo4j():
     
     driver = GraphDatabase.driver(NEO4J_URL, database=NEO4J_DATABASE, auth=(NEO4J_USER, NEO4J_PASSWORD))
     with driver.session() as session:
-        try:
-            for cypher in cypher_schema:
-                session.run(cypher)
-        except Exception as e:
-            print("An error occurred while creating schema:", e)
-    schema_initialized = True
+        for cypher in cypher_schema:
+            session.run(cypher)
     driver.close()
 
 def processpdfNeo4j(doc, doc_location):
@@ -78,23 +78,17 @@ def processpdfNeo4j(doc, doc_location):
 
     driver = GraphDatabase.driver(NEO4J_URL, database=NEO4J_DATABASE, auth=(NEO4J_USER, NEO4J_PASSWORD))
     with driver.session() as session:
-        
-        schemaNeo4j()
-        cypher = ""
         startTimedb = datetime.now()
         print(f'START TIME PROCESSING PDF FILE TO DB: {startTimedb}')
 
-        #Extract document name from doc_location, removing '.pdf' extension
         doc_name_val = os.path.basename(doc_location)[:-4]
         doc_url_val = doc_location
         doc_url_hash_val = hashlib.md5(doc_url_val.encode("utf-8")).hexdigest()
 
-        #Create Document node
         countDocument = 0
         cypher = cypher_pool[0]
         session.run(cypher, doc_url_hash_val=doc_url_hash_val, doc_url_val=doc_url_val, doc_name_val=doc_name_val)
 
-        #Create Section nodes
         countSection = 0
         for sec in doc.sections():
             sec_title_val = sec.title
@@ -104,47 +98,42 @@ def processpdfNeo4j(doc, doc_location):
             sec_page_idx_val = sec.page_idx
             sec_block_idx_val = sec.block_idx
 
-            #Merge Section nodes
             if not sec_tag_val == 'table':
                 cypher = cypher_pool[1]
-                session.run(cypher, page_idx_val=sec_page_idx_val
-                                , title_hash_val=sec_title_hash_val
-                                , title_val=sec_title_val
-                                , tag_val=sec_tag_val
-                                , level_val=sec_level_val
-                                , block_idx_val=sec_block_idx_val
-                                , doc_name_val=doc_name_val
-                                , doc_url_hash_val=doc_url_hash_val)
+                session.run(cypher, page_idx_val=sec_page_idx_val,
+                            title_hash_val=sec_title_hash_val,
+                            title_val=sec_title_val,
+                            tag_val=sec_tag_val,
+                            level_val=sec_level_val,
+                            block_idx_val=sec_block_idx_val,
+                            doc_name_val=doc_name_val,
+                            doc_url_hash_val=doc_url_hash_val)
 
-                #Create Relationship [:HAS_DOCUMENT] or [:UNDER_SECTION] for Section nodes
                 sec_parent_val = str(sec.parent.to_text())
 
-                #[:HAS_DOCUMENT] Relationship 
                 if sec_parent_val == "None":
                     cypher = cypher_pool[2]
-                    session.run(cypher, page_idx_val=sec_page_idx_val
-                                    , title_hash_val=sec_title_hash_val
-                                    , doc_url_hash_val=doc_url_hash_val
-                                    , block_idx_val=sec_block_idx_val
-                                    , doc_name_val=doc_name_val)
-                #[:UNDER_SECTION] Relationship
+                    session.run(cypher, page_idx_val=sec_page_idx_val,
+                                title_hash_val=sec_title_hash_val,
+                                doc_url_hash_val=doc_url_hash_val,
+                                block_idx_val=sec_block_idx_val,
+                                doc_name_val=doc_name_val)
                 else:
                     sec_parent_title_hash_val = hashlib.md5(sec_parent_val.encode("utf-8")).hexdigest()
                     sec_parent_page_idx_val = sec.parent.page_idx
                     sec_parent_block_idx_val = sec.parent.block_idx
 
                     cypher = cypher_pool[3]
-                    session.run(cypher, page_idx_val=sec_page_idx_val
-                                    , title_hash_val=sec_title_hash_val
-                                    , block_idx_val=sec_block_idx_val
-                                    , parent_page_idx_val=sec_parent_page_idx_val
-                                    , parent_title_hash_val=sec_parent_title_hash_val
-                                    , parent_block_idx_val=sec_parent_block_idx_val
-                                    , doc_url_hash_val=doc_url_hash_val
-                                    , doc_name_val=doc_name_val)
+                    session.run(cypher, page_idx_val=sec_page_idx_val,
+                                title_hash_val=sec_title_hash_val,
+                                block_idx_val=sec_block_idx_val,
+                                parent_page_idx_val=sec_parent_page_idx_val,
+                                parent_title_hash_val=sec_parent_title_hash_val,
+                                parent_block_idx_val=sec_parent_block_idx_val,
+                                doc_url_hash_val=doc_url_hash_val,
+                                doc_name_val=doc_name_val)
             countSection += 1
 
-        #Create Chunk nodes
         countChunk = 0
         for chk in doc.chunks():
             chunk_block_idx_val = chk.block_idx
@@ -153,21 +142,19 @@ def processpdfNeo4j(doc, doc_location):
             chunk_level_val = chk.level
             chunk_sentences = "\n".join(chk.sentences)
 
-            #Merge Chunk nodes
             if not chunk_tag_val == 'table':
                 chunk_sentences_hash_val = hashlib.md5(chunk_sentences.encode("utf-8")).hexdigest()
 
                 cypher = cypher_pool[4]
-                session.run(cypher, sentences_hash_val=chunk_sentences_hash_val
-                                , sentences_val=chunk_sentences
-                                , block_idx_val=chunk_block_idx_val
-                                , page_idx_val=chunk_page_idx_val
-                                , tag_val=chunk_tag_val
-                                , level_val=chunk_level_val
-                                , doc_name_val=doc_name_val
-                                , doc_url_hash_val=doc_url_hash_val)
+                session.run(cypher, sentences_hash_val=chunk_sentences_hash_val,
+                            sentences_val=chunk_sentences,
+                            block_idx_val=chunk_block_idx_val,
+                            page_idx_val=chunk_page_idx_val,
+                            tag_val=chunk_tag_val,
+                            level_val=chunk_level_val,
+                            doc_name_val=doc_name_val,
+                            doc_url_hash_val=doc_url_hash_val)
 
-                #Create Relationship [:HAS_PARENT] from Chunk nodes
                 chk_parent_val = str(chk.parent.to_text())
                 if not chk_parent_val == "None":
                     chk_parent_hash_val = hashlib.md5(chk_parent_val.encode("utf-8")).hexdigest()
@@ -175,15 +162,14 @@ def processpdfNeo4j(doc, doc_location):
                     chk_parent_block_idx_val = chk.parent.block_idx
 
                     cypher = cypher_pool[5]
-                    session.run(cypher, sentences_hash_val=chunk_sentences_hash_val
-                                    , block_idx_val=chunk_block_idx_val
-                                    , parent_hash_val=chk_parent_hash_val
-                                    , parent_block_idx_val=chk_parent_block_idx_val
-                                    , doc_name_val=doc_name_val
-                                    , doc_url_hash_val=doc_url_hash_val)
+                    session.run(cypher, sentences_hash_val=chunk_sentences_hash_val,
+                                block_idx_val=chunk_block_idx_val,
+                                parent_hash_val=chk_parent_hash_val,
+                                parent_block_idx_val=chk_parent_block_idx_val,
+                                doc_name_val=doc_name_val,
+                                doc_url_hash_val=doc_url_hash_val)
             countChunk += 1
 
-        #Create Table nodes
         countTable = 0
         for tb in doc.tables():
             page_idx_val = tb.page_idx
@@ -192,17 +178,15 @@ def processpdfNeo4j(doc, doc_location):
             html_val = tb.to_html()
             rows_val = len(tb.rows)
 
-            #Merge Table nodes
             cypher = cypher_pool[6]
-            session.run(cypher, block_idx_val=block_idx_val
-                            , page_idx_val=page_idx_val
-                            , name_val=name_val
-                            , html_val=html_val
-                            , rows_val=rows_val
-                            , doc_name_val=doc_name_val
-                            , doc_url_hash_val=doc_url_hash_val)
+            session.run(cypher, block_idx_val=block_idx_val,
+                        page_idx_val=page_idx_val,
+                        name_val=name_val,
+                        html_val=html_val,
+                        rows_val=rows_val,
+                        doc_name_val=doc_name_val,
+                        doc_url_hash_val=doc_url_hash_val)
 
-            #Create Relationship [:HAS_PARENT] from Table nodes to Section nodes
             table_parent_val = str(tb.parent.to_text())
             if not table_parent_val == "None":
                 table_parent_hash_val = hashlib.md5(table_parent_val.encode("utf-8")).hexdigest()
@@ -210,21 +194,19 @@ def processpdfNeo4j(doc, doc_location):
                 table_parent_block_idx_val = tb.parent.block_idx
 
                 cypher = cypher_pool[7]
-                session.run(cypher, name_val=name_val
-                                , block_idx_val=block_idx_val
-                                , parent_page_idx_val=table_parent_page_idx_val
-                                , parent_hash_val=table_parent_hash_val
-                                , parent_block_idx_val=table_parent_block_idx_val
-                                , doc_name_val=doc_name_val
-                                , doc_url_hash_val=doc_url_hash_val)
-                
-            #Create Relationship [:HAS_PARENT] from Table nodes to Document nodes
+                session.run(cypher, name_val=name_val,
+                            block_idx_val=block_idx_val,
+                            parent_page_idx_val=table_parent_page_idx_val,
+                            parent_hash_val=table_parent_hash_val,
+                            parent_block_idx_val=table_parent_block_idx_val,
+                            doc_name_val=doc_name_val,
+                            doc_url_hash_val=doc_url_hash_val)
             else:
                 cypher = cypher_pool[8]
-                session.run(cypher, name_val=name_val
-                                , block_idx_val=block_idx_val
-                                , doc_name_val=doc_name_val
-                                , doc_url_hash_val=doc_url_hash_val)
+                session.run(cypher, name_val=name_val,
+                            block_idx_val=block_idx_val,
+                            doc_name_val=doc_name_val,
+                            doc_url_hash_val=doc_url_hash_val)
             countTable += 1
         countDocument += 1
 
@@ -237,7 +219,7 @@ def processpdfNeo4j(doc, doc_location):
         print(f'Total time: {datetime.now() - startTimedb}')
         print('-----------------------------------------------------------------')
     print('TOTAL DOCUMENTS PROCESSED:'+' '+str(countDocument))
-    
+
     driver.close()
 
 def move_file_to_loaded_folder(filename):
@@ -246,7 +228,9 @@ def move_file_to_loaded_folder(filename):
     shutil.move(filename, os.path.join(file_destination, os.path.basename(filename)))
 
 def main():
-    schemaNeo4j()
+    if not test_neo4j(NEO4J_URL, NEO4J_USER, NEO4J_PASSWORD):
+        schemaNeo4j()
+
     pdf_files = glob.glob(file_location + '/*.pdf')
     print('-----------------------------------------------------------------')
     print(f'TOTAL PDF FILES FOUND: {len(pdf_files)}')

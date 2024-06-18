@@ -7,7 +7,7 @@ from langchain_community.vectorstores.neo4j_vector import Neo4jVector
 from langchain.chains.qa_with_sources.retrieval import RetrievalQAWithSourcesChain
 from langchain_community.embeddings.sentence_transformer import SentenceTransformerEmbeddings
 from utils import BaseLogger
-from connect_test import test_neo4j
+from connect_test import testnodes_neo4j
 import sys
 sys.path.append('/Users/nfanlo/dev')
 from config.config import config
@@ -50,7 +50,7 @@ def llm_chain(llm):
     The function waits for the selected llm model. This function will process the user input 
     and generate the complete response flow with the llm model."""
 
-    test_neo4j(NEO4J_URL, NEO4J_USER, NEO4J_PASSWORD, show_nodes=False) #Change True: Show number of nodes in Neo4j DB
+    testnodes_neo4j(NEO4J_URL, NEO4J_USER, NEO4J_PASSWORD, show_nodes=False) #Change True: Show number of nodes in Neo4j DB
     template = """
     You are a GPT lawyer, the best specialist in contracts and Spanish laws that helps with answering general questions.
     Generate concise answers and should not exceed 200 words. Remember response only in Spanish text.
@@ -73,7 +73,7 @@ def qa_rag_chain(llm, embeddings, embeddings_url, username, password, database, 
     The function will search the database for the chunks of text most similar to the user input 
     and generate the complete response flow with the llm model"""
 
-    test_neo4j(NEO4J_URL, NEO4J_USER, NEO4J_PASSWORD, show_nodes=False)
+    testnodes_neo4j(NEO4J_URL, NEO4J_USER, NEO4J_PASSWORD, show_nodes=False)
     print("DOCUMENT NAME:", doc_name)
 
     #Cypher query to retrieve chunk Neo4j contracts for user question

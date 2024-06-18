@@ -1,23 +1,27 @@
-import json
 import sys
+import os
+import json
 from datetime import datetime
-from torch import cuda
 from neo4j import GraphDatabase
+import torch.cuda as cuda
 from langchain.embeddings.huggingface import HuggingFaceEmbeddings
 
+# Añadir la ruta para importar configuraciones
 sys.path.append('/Users/nfanlo/dev')
 from config.config import config
 
-#Change the following variables to your own Neo4j instance
+# Configuración de Neo4j
 NEO4J_USER = "neo4j"
 NEO4J_DATABASE = "neo4j"
 NEO4J_PASSWORD = config["neo4j_password"]
 NEO4J_URL = config["neo4j_url"]
 
-#Select 'all-MiniLM-L6-v2' for embedding text (low resources)
+# Selección del modelo para embedding
 embed_model_id = 'sentence-transformers/all-MiniLM-L6-v2'
 
+# Configuración del dispositivo
 device = f'cuda:{cuda.current_device()}' if cuda.is_available() else 'cpu'
+
 def embedding_model():
     return HuggingFaceEmbeddings(model_name=embed_model_id,
         model_kwargs={'device': device},
@@ -33,24 +37,30 @@ def create_embedding(node, property):
 
     with driver.session() as session:
         try:
-            results = session.run(f"MATCH (chunk:{node}) -[:HAS_PARENT]-> (s:Section) RETURN id(chunk) AS id, s.title + ' >> ' + chunk.{property} AS text")
+            # Seleccionar solo los nodos que no tienen embeddings creados
+            results = session.run(f"""
+                MATCH (chunk:{node}) -[:HAS_PARENT]-> (s:Section)
+                WHERE chunk.embedding_created IS NULL OR chunk.embedding_created = false
+                RETURN id(chunk) AS id, s.title + ' >> ' + chunk.{property} AS text
+            """)
             count = 0
 
             for result in results:
                 id = result["id"]
                 text = result["text"]
-                embedding = embed_model.embed_documents(text)
-                embedding_str = json.dumps(embedding)
+                embedding = embed_model.embed_documents([text])  # Cambié esta línea
+                embedding_str = json.dumps(embedding[0])  # Convertir el primer resultado a JSON
 
-                #Embeddng: Create Embeddng node with 'key', 'embedding'
-                #Relationship id-Embedding: Creates relationship [:HAS_EMBEDDING] from id to Embedding node
+                # Embedding: Crear nodo de Embedding con 'key' y 'embedding'
+                # Relación id-Embedding: Crear relación [:HAS_EMBEDDING] desde id a nodo Embedding
                 cypher = "CREATE (e:Embedding) SET e.key=$key, e.value=$embedding"
                 cypher = cypher + " WITH e MATCH (n) WHERE id(n) = $id CREATE (n) -[:HAS_EMBEDDING]-> (e)"
-                session.run(cypher,key=property, embedding=embedding_str, id=id )
+                cypher = cypher + " SET n.embedding_created = true"
+                session.run(cypher, key=property, embedding=embedding_str, id=id)
 
                 count += 1
                 
-                #Restart embeding_model after 30 counts to avoid connection errors with very long processes
+                # Reiniciar el modelo de embedding después de 30 cuentas para evitar errores de conexión en procesos largos
                 if count % 30 == 0:
                     embed_model = embedding_model()
 
@@ -65,8 +75,8 @@ def create_embedding(node, property):
         finally:
             session.close()
 
-#Select the nodes and properties to apply embeddings function
-#Change it into your database nodes
+# Seleccionar los nodos y propiedades para aplicar la función de embeddings
+# Cambiarlo a los nodos de tu base de datos
 nodes_to_process = [("Chunk", "sentences"), ("Table", "name")]
 
 for node in nodes_to_process:
